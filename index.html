@@ -1,1 +1,288 @@
-<h1>INDEX test</h1>
+<html>
+
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <script>
+            // If we're running on a real web server (as opposed to localhost, which is whitelisted),
+            // then change the protocol to HTTPS.
+            // See https://goo.gl/lq4gCo for an explanation as to why this is needed for some features.
+            (function() {
+                var isLocalhost = !!(window.location.hostname === 'localhost' ||
+                // [::1] is the IPv6 localhost address.
+                window.location.hostname === '[::1]' ||
+                // 127.0.0.1/8 is considered localhost for IPv4.
+                window.location.hostname.match(/^127(?:\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}$/));
+                if (window.location.protocol === 'http:' && !isLocalhost) {
+                    // Redirect to https: if we're currently using http: and we're not on localhost.
+                    window.location.protocol = 'https:';
+                }
+            })();
+        
+            // Add a global error event listener early on in the page load, to help ensure that browsers
+            // which don't support specific functionality still end up displaying a meaningful message.
+            window.addEventListener('error', function(error) {
+                if (ChromeSamples && ChromeSamples.setStatus) {
+                    ChromeSamples.setStatus(error.message + ' (Your browser may not support this feature.)');
+                    error.preventDefault();
+                }
+            });
+        </script>
+
+    </head>
+
+    <body>
+    
+        <form>
+            <input id="service" type="text" autofocus placeholder="Bluetooth Service">
+            <button>Get characteristics</button>
+        </form>
+        
+        <script>
+            var ChromeSamples = {
+                log: function() {
+                var line = Array.prototype.slice.call(arguments).map(function(argument) {
+                    return typeof argument === 'string' ? argument : JSON.stringify(argument);
+                }).join(' ');
+            
+                document.querySelector('#log').textContent += line + '\n';
+                },
+            
+                clearLog: function() {
+                document.querySelector('#log').textContent = '';
+                },
+            
+                setStatus: function(status) {
+                document.querySelector('#status').textContent = status;
+                },
+            
+                setContent: function(newContent) {
+                var content = document.querySelector('#content');
+                while(content.hasChildNodes()) {
+                    content.removeChild(content.lastChild);
+                }
+                content.appendChild(newContent);
+                }
+            };
+        </script>
+
+        <h3>Live Output</h3>
+        <div id="output" class="output">
+          <div id="content"></div>
+          <div id="status"></div>
+          <pre id="log"></pre>
+        </div>
+
+        <script> function getSupportedProperties(characteristic) {
+          let supportedProperties = [];
+          for (const p in characteristic.properties) {
+            if (characteristic.properties[p] === true) {
+              supportedProperties.push(p.toUpperCase());
+            }
+          }
+          return '[' + supportedProperties.join(', ') + ']';
+        }</script>
+
+        <script> function onEnvironmentalChanged(event) {
+            let value = event.target.value;
+            let a = [];
+            // Convert raw data bytes to hex values just for the sake of showing something.
+            // In the "real" world, you'd use data.getUint8, data.getUint16 or even
+            // TextDecoder to process raw data bytes.
+            
+            for (let i = 0; i < value.byteLength; i++) {
+                a.push(value.getUint8(i));
+
+               //a.push('0x' + ('00' + value.getUint8(i).toString(16)).slice(-2));
+            }
+            //log('> ' + a.join(' '));
+
+          
+
+           log("timestamp: " + (a[1] << 8 | a[0]));
+
+           log("pression: "  + (a[5] << 32 | a[4] << 16 | a[3] << 8 | a[2] )/10 + "[mb]");
+
+           log("temperature: " + (a[7] << 8 | a[6])/10 + "[°C]");
+
+           /*log("temperature: " + (a[7] << 8 | a[6]));*/
+
+            //var value = event.target.value.getUint8(0);
+            //log("value:" + value);
+        }
+        </script>
+
+        <script> function readEnvironmental(characteristic) {
+              return characteristic.startNotifications()
+                .then(char => {
+                  characteristic.addEventListener('characteristicvaluechanged',
+                    onEnvironmentalChanged);
+                });
+
+            }
+        </script>
+
+        <script>function onFormSubmit() {
+
+            let options = {
+                acceptAllDevices: true,
+                optionalServices: ['00000000-0001-11e1-9ab4-0002a5d5c51b']
+            };
+
+           'use strict';
+            var serviceUuid = document.getElementById('service').value;
+            var i;
+      
+            if (serviceUuid.startsWith('0x')) {
+                serviceUuid = parseInt(serviceUuid, 16);
+            }
+            log("Service chosen!");
+            
+            navigator.bluetooth.requestDevice(/*{
+                //filters: [{services: [serviceUuid]}],
+                acceptAllDevices: true,
+                optionalServices: [serviceUuid]
+            }*/options).then(device => {
+                log('Connecting to GATT Server...');
+                return device.gatt.connect();
+              })
+              /*.then(server => server.getPrimaryService('00000000-0001-11e1-9ab4-0002a5d5c51b'))
+              .then(service => service.getCharacteristic('00140000-0001-11e1-ac36-0002a5d5c51b'))
+              .then(characteristic => characteristic.readValue())
+              .catch(error => {
+               log('Argh! ' + error);
+              });*/
+              .then(server => {
+                // Note that we could also get all services that match a specific UUID by
+                // passing it to getPrimaryServices().
+                log('Getting Services...');
+                return server.getPrimaryServices();
+              })
+              .then(services => {
+                log('Getting Characteristics...');
+                let queue = Promise.resolve();
+                services.forEach(service => {
+                  queue = queue.then(_ => service.getCharacteristics().then(characteristics => {
+                    log('> Service: ' + service.uuid);
+                    characteristics.forEach(characteristic => {
+                      log('>> Characteristic: ' + characteristic.uuid + ' ' +
+                          getSupportedProperties(characteristic));
+                    });
+                  }));
+                  service.getCharacteristic('00140000-0001-11e1-ac36-0002a5d5c51b').then(readEnvironmental);
+                });
+                return queue;
+              })
+              .catch(error => {
+                log('Argh! ' + error);
+              });
+             // Validate services UUID entered by user first.
+              /*let optionalServices = document.querySelector('#optionalServices').value
+                .split(/, ?/).map(s => s.startsWith('0x') ? parseInt(s) : s)
+                .filter(s => s && BluetoothUUID.getService);
+
+              log('Requesting any Bluetooth Device...');
+              navigator.bluetooth.requestDevice({
+               // filters: [...] <- Prefer filters to save energy & show relevant devices.
+                  acceptAllDevices: true,
+                  optionalServices: optionalServices})
+              .then(device => {
+                log('Connecting to GATT Server...');
+                return device.gatt.connect();
+              })
+              .then(server => {
+                // Note that we could also get all services that match a specific UUID by
+                // passing it to getPrimaryServices().
+                log('Getting Services...');
+                return server.getPrimaryServices();
+              })
+              .then(services => {
+                log('Getting Characteristics...');
+                let queue = Promise.resolve();
+                services.forEach(service => {
+                  queue = queue.then(_ => service.getCharacteristics().then(characteristics => {
+                    log('> Service: ' + service.uuid);
+                    characteristics.forEach(characteristic => {
+                      log('>> Characteristic: ' + characteristic.uuid + ' ' +
+                          getSupportedProperties(characteristic));
+                    });
+                  }));
+                });
+                return queue;
+              })
+              .catch(error => {
+                log('Argh! ' + error);
+              });*/
+        };
+        </script>
+
+        <!--<script>function onButtonClick() {
+            // Validate services UUID entered by user first.
+              let optionalServices = document.querySelector('#optionalServices').value
+                .split(/, ?/).map(s => s.startsWith('0x') ? parseInt(s) : s)
+                .filter(s => s && BluetoothUUID.getService);
+
+              log('Requesting any Bluetooth Device...');
+              navigator.bluetooth.requestDevice({
+               // filters: [...] <- Prefer filters to save energy & show relevant devices.
+                  acceptAllDevices: true,
+                  optionalServices: optionalServices})
+              .then(device => {
+                log('Connecting to GATT Server...');
+                return device.gatt.connect();
+              })
+              .then(server => {
+                // Note that we could also get all services that match a specific UUID by
+                // passing it to getPrimaryServices().
+                log('Getting Services...');
+                return server.getPrimaryServices();
+              })
+              .then(services => {
+                log('Getting Characteristics...');
+                let queue = Promise.resolve();
+                services.forEach(service => {
+                  queue = queue.then(_ => service.getCharacteristics().then(characteristics => {
+                    log('> Service: ' + service.uuid);
+                    characteristics.forEach(characteristic => {
+                      log('>> Characteristic: ' + characteristic.uuid + ' ' +
+                          getSupportedProperties(characteristic));
+                    });
+                  }));
+                });
+                return queue;
+              })
+              .catch(error => {
+                log('Argh! ' + error);
+              });
+        </script>-->
+        
+        <script>
+            document.querySelector('form').addEventListener('submit', function(event) {
+                event.stopPropagation();
+                event.preventDefault();
+            
+                if (isWebBluetoothEnabled()) {
+                ChromeSamples.clearLog();
+                onFormSubmit();
+                //onButtonClick();
+                }
+            });
+        </script>
+
+        <script>
+            log = ChromeSamples.log;
+            
+            function isWebBluetoothEnabled() {
+                if (navigator.bluetooth) {
+                return true;
+                } else {
+                ChromeSamples.setStatus('Web Bluetooth API is not available.\n' +
+                                        'Please make sure the Web Bluetooth flag is enabled.');
+                return false;
+                }
+            }
+        </script>
+
+    </body>
+
+</html>
