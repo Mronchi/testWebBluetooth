@@ -96,27 +96,30 @@
             log("timestamp: " + (a[1] << 8 | a[0]));
             log("pression: "  + (a[5] << 32 | a[4] << 16 | a[3] << 8 | a[2] )/10 + "[mb]");
             log("temperature: " + (a[7] << 8 | a[6])/10 + "[°C]");
-
         }
         </script>
         
         <script> function onADPCMSyncChanged(event) {
-            let value = event.target.value;
+          log("ADPCM_sync Changed");
+
+           /*let value = event.target.value;
             let a = [];
             for (let i = 0; i < value.byteLength; i++) {
                 a.push(value.getUint8(i));
             }
-            log("ADPCM_sync: " + + a.join(' '));
+            log("ADPCM_sync: " + + a.join(' '));*/
         }
         </script>
         
         <script> function onADPCMAudioChanged(event) {
-            let value = event.target.value;
+
+           log("ADPCM_audio Changed");
+            /*let value = event.target.value;
             let a = [];
             for (let i = 0; i < value.byteLength; i++) {
                 a.push(value.getUint8(i));
             }
-            log("ADPCM_audio: " + + a.join(' '));
+            log("ADPCM_audio: " + + a.join(' '));*/
         }
         </script>
 
@@ -126,37 +129,47 @@
                   characteristic.addEventListener('characteristicvaluechanged',
                     onEnvironmentalChanged);
                 });
-
             }
         </script>
         
         <script> function readADPCMSync(characteristic) {
+
+             log("ADPCM_sync enabling notifications...");
               return characteristic.startNotifications()
                 .then(char => {
+                 log("ADPCM_sync adding listener...");
                   characteristic.addEventListener('characteristicvaluechanged',
                     onADPCMSyncChanged);
                 });
-
+                /*log('> handleADPCMSync()');
+                //syncchar = characteristic;
+                characteristic.addEventListener('characteristicvaluechanged',onADPCMSyncChanged);
+                return characteristic.startNotifications();*/
             }
         </script>
         
         <script> function readADPCMAudio(characteristic) {
+
+             log("ADPCM_audio enabling notifications...");
               return characteristic.startNotifications()
                 .then(char => {
+
+                 log("ADPCM_audio adding listener...");
                   characteristic.addEventListener('characteristicvaluechanged',
                     onADPCMAudioChanged);
                 });
-
+                /*log('> handleADPCMAudio()');
+                //audiochar = characteristic;
+                characteristic.addEventListener('characteristicvaluechanged',onADPCMAudioChanged);
+                return characteristic.startNotifications();*/
             }
         </script>
 
         <script> function onFormSubmit() {
-
             let options = {
                 acceptAllDevices: true,
                 optionalServices: ['00000000-0001-11e1-9ab4-0002a5d5c51b']
             };
-
            'use strict';
             var serviceUuid = document.getElementById('service').value;
             var i;
@@ -165,16 +178,92 @@
                 serviceUuid = parseInt(serviceUuid, 16);
             }
             log("Service chosen!");
-            
-            navigator.bluetooth.requestDevice(/*{
-                //filters: [{services: [serviceUuid]}],
-                acceptAllDevices: true,
-                optionalServices: [serviceUuid]
-            }*/options).then(device => {
+
+            log('Requesting Bluetooth Device...');
+            navigator.bluetooth.requestDevice(options)
+            .then(device => device.gatt.connect())
+            .then(server => { 
+              bleServer = server;
+              log('Got bleServer');
+              return server.getPrimaryService('00000000-0001-11e1-9ab4-0002a5d5c51b');
+            })
+            .then(service => {
+              log('Got bleService');
+              bleService = service;
+            })
+            .then(() => bleService.getCharacteristic('40000000-0001-11e1-ac36-0002a5d5c51b'))
+            .then( characteristic => {
+              log('ADPCMSyncChar');
+              adpcmsyncChar = characteristic;
+              return adpcmsyncChar.startNotifications();
+            }).then(() => {
+              adpcmsyncChar.addEventListener('characteristicvaluechanged',onADPCMSyncChanged);
+            })
+            .then(() => bleService.getCharacteristic('08000000-0001-11e1-ac36-0002a5d5c51b'))
+            .then( characteristic => {
+              log('ADPCMAudioChar');
+              adpcmaudioChar = characteristic;
+              return adpcmaudioChar.startNotifications();
+            })
+            .then(() => {
+              adpcmaudioChar.addEventListener('characteristicvaluechanged',onADPCMAudioChanged);
+            })
+            /*log('Requesting Bluetooth Device...');
+            navigator.bluetooth.requestDevice(options)
+            .then(device => device.gatt.connect())
+            .then(server => { 
+              bleServer = server;
+              log('Got bleServer');
+              return server.getPrimaryService('00000000-0001-11e1-9ab4-0002a5d5c51b');
+            })
+            .then(service => {
+              log('Got bleService');
+              bleService = service;
+            })
+            .then(() => bleService.getCharacteristic('40000000-0001-11e1-ac36-0002a5d5c51b'))
+            .then( characteristic => {
+              setTimeout(readADPCMSync(characteristic), 10);
+            })
+            .then(() => bleService.getCharacteristic('08000000-0001-11e1-ac36-0002a5d5c51b'))
+            .then( characteristic => {
+              setTimeout(readADPCMAudio(characteristic), 2000);
+            })*/
+
+            /*navigator.bluetooth.requestDevice(options).then(function(device) {
+              return device.gatt.connect();
+            }).then(function(gattServer) {
+              return gattServer.getPrimaryService('00000000-0001-11e1-9ab4-0002a5d5c51b');
+            }).then(function(service) {
+              if (!service)
+                throw "service not found";
+              log('Getting Characteristics...');
+                return Promise.all([
+                  service.getCharacteristic('40000000-0001-11e1-ac36-0002a5d5c51b')
+                    .then(readADPCMSync),
+                  service.getCharacteristic('08000000-0001-11e1-ac36-0002a5d5c51b')
+                    .then(readADPCMAudio)
+                ]);
+            })*/
+
+            /*navigator.bluetooth.requestDevice(options).then(device => {
                 log('Connecting to GATT Server...');
                 return device.gatt.connect();
-              })
-              .then(server => {
+              }).then(server => {
+                log('Getting Services...');
+                serviceUuid = '00000000-0001-11e1-9ab4-0002a5d5c51b';
+                server.getPrimaryService(serviceUuid);
+              }).then(service => {
+                log('Getting Characteristics...');
+                return Promise.all([
+                  service.getCharacteristic('40000000-0001-11e1-ac36-0002a5d5c51b')
+                    .then(readADPCMSync),
+                  service.getCharacteristic('08000000-0001-11e1-ac36-0002a5d5c51b')
+                    .then(readADPCMAudio)
+                ]);
+              })*/
+
+              //*********************************************************************************************************
+              /*.then(server => {
                 // Note that we could also get all services that match a specific UUID by
                 // passing it to getPrimaryServices().
                 log('Getting Services...');
@@ -191,12 +280,13 @@
                           getSupportedProperties(characteristic));
                     });
                   }));
-                  //service.getCharacteristic('00140000-0001-11e1-ac36-0002a5d5c51b').then(readEnvironmental);
-                    service.getCharacteristic('40000000-0001-11e1-ac36-0002a5d5c51b').then(readADPCMSync);
-                    service.getCharacteristic('08000000-0001-11e1-ac36-0002a5d5c51b').then(readADPCMAudio);
+                    //service.getCharacteristic('00140000-0001-11e1-ac36-0002a5d5c51b').then(readEnvironmental);
+                    //service.getCharacteristic('40000000-0001-11e1-ac36-0002a5d5c51b').then(readADPCMSync));
+                    //service.getCharacteristic('08000000-0001-11e1-ac36-0002a5d5c51b').then(readADPCMAudio);
                 });
                 return queue;
-              })
+              })*/
+              //*********************************************************************************************************
               .catch(error => {
                 log('Argh! ' + error);
               });
@@ -204,7 +294,6 @@
               /*let optionalServices = document.querySelector('#optionalServices').value
                 .split(/, ?/).map(s => s.startsWith('0x') ? parseInt(s) : s)
                 .filter(s => s && BluetoothUUID.getService);
-
               log('Requesting any Bluetooth Device...');
               navigator.bluetooth.requestDevice({
                // filters: [...] <- Prefer filters to save energy & show relevant devices.
@@ -245,7 +334,6 @@
               let optionalServices = document.querySelector('#optionalServices').value
                 .split(/, ?/).map(s => s.startsWith('0x') ? parseInt(s) : s)
                 .filter(s => s && BluetoothUUID.getService);
-
               log('Requesting any Bluetooth Device...');
               navigator.bluetooth.requestDevice({
                // filters: [...] <- Prefer filters to save energy & show relevant devices.
